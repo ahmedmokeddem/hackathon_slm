@@ -2,21 +2,15 @@
 
 A FastAPI service that converts natural language questions into valid [Polars](https://pola.rs/) Python code using a fine-tuned SLM (Small Language Model).
 
-## How it works
-
-1. You send a question + table schema to the `/chat` endpoint
-2. The model generates a valid Polars expression assigned to `result`
-3. The response is clean Python code, ready to execute
-
 ## Model
 
-`google/gemma-4-E2B-it` with LoRA adapter `Sokheng/qwen2.5-coder-7b-polars`
+`Sokheng/qwen2.5-coder-7b-polars`
 
 ## Setup
 
 ```bash
 uv venv
-uv pip install -r requirements.txt
+uv sync
 ```
 
 ## Run
