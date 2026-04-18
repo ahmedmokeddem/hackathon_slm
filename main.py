@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
-MODEL_NAME = "Qwen/Qwen2.5-Coder-7B-Instruct"
+MODEL_NAME = "m-a-p/OpenCodeInterpreter-DS-6.7B"
 
 app = FastAPI()
 
