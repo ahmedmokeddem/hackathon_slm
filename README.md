@@ -4,7 +4,7 @@ A FastAPI service that converts natural language questions into valid [Polars](h
 
 ## Model
 
-`Sokheng/qwen2.5-coder-7b-polars`
+`Qwen/Qwen2.5-Coder-7B-Instruct`
 
 ## Setup
 
