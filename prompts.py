@@ -211,5 +211,5 @@ def build_messages(question: str, tables: dict) -> list:
 
     messages = [{"role": "system", "content": system}]
     messages.extend(FEW_SHOTS)
-    messages.append({"role": "user", "content": f"Tables: {table_names}\nQuestion: {question}"})
+    messages.append({"role": "user", "content": f"Tables: {table_names}\nSchema:\n{schema_str}\nQuestion: {question}"})
     return messages
