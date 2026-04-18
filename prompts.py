@@ -2,6 +2,7 @@ import polars as pl
 
 SYSTEM_PROMPT = """\
 You are a Polars (Python) expert. Output ONLY valid Python code. No explanation, no markdown fences.
+Every response MUST start with: import polars as pl
 
 STRICT RULES:
 - import polars as pl must be the first line
@@ -13,6 +14,8 @@ STRICT RULES:
 - NEVER use .loc, .iloc, or index-based selection
 - NEVER assign columns like df["col"] = ... — use .with_columns()
 - Use the EXACT alias names mentioned in the question — do NOT invent aliases from column names
+- NEVER use a column name that is not listed in the schema above
+- If a column seems missing, use the closest available one from the schema
 
 POLARS API (use exactly as shown):
 # Filter & Select
@@ -38,7 +41,7 @@ POLARS API (use exactly as shown):
   tbl.join(tbl2, on="id", how="inner"|"left"|"anti")
   tbl.join(tbl2, left_on="a_id", right_on="b_id")
   # COLLISION: if both tables have "name", right becomes "name_right"
-  # Fix: tbl2.rename({"name": "name2"}) before join, OR .select(pl.col("name_right").alias("name2"))
+  # Fix: tbl2.rename({"name": "name2"}) before join
 
 # Window functions (sort first if order matters)
   tbl.sort("date").with_columns(pl.col("x").cum_sum().over("group").alias("running"))
@@ -72,24 +75,107 @@ POLARS API (use exactly as shown):
   tbl.pivot(on="col", index="row", values="val", aggregate_function="sum")
 """
 
+FEW_SHOTS = [
+    {
+        "role": "user",
+        "content": "Tables: ['df']\nQuestion: Count rows per category."
+    },
+    {
+        "role": "assistant",
+        "content": "import polars as pl\nresult = df.group_by(\"category\").agg(pl.len().alias(\"count\"))"
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['nw_orders', 'nw_customers']\nQuestion: Join orders with customers on customer_id."
+    },
+    {
+        "role": "assistant",
+        "content": "import polars as pl\nresult = nw_orders.join(nw_customers, on=\"customer_id\")"
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['nw_customers', 'nw_orders']\nQuestion: Find customers who have never placed an order."
+    },
+    {
+        "role": "assistant",
+        "content": "import polars as pl\nresult = nw_customers.join(nw_orders, on=\"customer_id\", how=\"anti\")"
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['sk_payments']\nQuestion: Select payment_id, customer_id, amount, and add amount_category: 'large' if above 5, 'medium' if above 2, else 'small'."
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "import polars as pl\n"
+            "result = sk_payments.select(\n"
+            "    \"payment_id\", \"customer_id\", \"amount\",\n"
+            "    pl.when(pl.col(\"amount\") > 5).then(pl.lit(\"large\"))\n"
+            "      .when(pl.col(\"amount\") > 2).then(pl.lit(\"medium\"))\n"
+            "      .otherwise(pl.lit(\"small\")).alias(\"amount_category\")\n"
+            ")"
+        )
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['tpch_lineitem']\nQuestion: TPC-H Q1: group by returnflag and linestatus, compute sum_qty, sum_price, avg_discount, count."
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "import polars as pl\n"
+            "result = tpch_lineitem.group_by(\"l_returnflag\", \"l_linestatus\").agg(\n"
+            "    pl.col(\"l_quantity\").sum().alias(\"sum_qty\"),\n"
+            "    pl.col(\"l_extendedprice\").sum().alias(\"sum_price\"),\n"
+            "    pl.col(\"l_discount\").mean().round(4).alias(\"avg_disc\"),\n"
+            "    pl.len().alias(\"count_order\")\n"
+            ").sort(\"l_returnflag\", \"l_linestatus\")"
+        )
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['nw_products', 'nw_categories']\nQuestion: Pivot: for each category, show count of discontinued vs active products as columns."
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "import polars as pl\n"
+            "result = nw_products.join(nw_categories, on=\"category_id\").group_by(\n"
+            "    \"category_name\", \"discontinued\"\n"
+            ").agg(pl.len().alias(\"count\")).pivot(\n"
+            "    on=\"discontinued\", index=\"category_name\", values=\"count\"\n"
+            ").fill_null(0)"
+        )
+    },
+    {
+        "role": "user",
+        "content": "Tables: ['nw_order_details', 'nw_orders', 'nw_customers']\nQuestion: Compute average order value per country."
+    },
+    {
+        "role": "assistant",
+        "content": (
+            "import polars as pl\n"
+            "result = nw_order_details.with_columns(\n"
+            "    (pl.col(\"unit_price\") * pl.col(\"quantity\") * (1 - pl.col(\"discount\"))).alias(\"revenue\")\n"
+            ").group_by(\"order_id\").agg(\n"
+            "    pl.col(\"revenue\").sum().alias(\"order_value\")\n"
+            ").join(nw_orders, on=\"order_id\").join(nw_customers, on=\"customer_id\").group_by(\"country\").agg(\n"
+            "    pl.col(\"order_value\").mean().round(2).alias(\"avg_order_value\"),\n"
+            "    pl.len().alias(\"order_count\")\n"
+            ").sort(\"avg_order_value\", descending=True)"
+        )
+    },
+]
+
 
 def _extract_datasets(tables: dict) -> dict:
-    """
-    Handles multiple payload shapes:
-      1. Flat:   {"sk_films": {"columns": [...], "file_name": "..."}}
-      2. Nested: {"prop": {"datasets": {"sk_films": {"file_name": "...", "format": "..."}}}}
-    Returns {table_name: {"file_name": ..., "columns": [...]} or {}}
-    """
-    # Shape 2: any top-level value has a "datasets" key
     for v in tables.values():
         if isinstance(v, dict) and "datasets" in v:
             return v["datasets"]
-    # Shape 1: top-level keys are table names
     return tables
 
 
 def _get_columns(info: dict) -> list:
-    """Try to read column names from the file if not already in info."""
     if isinstance(info, dict) and info.get("columns"):
         return info["columns"]
 
@@ -99,9 +185,9 @@ def _get_columns(info: dict) -> list:
     try:
         fmt = (info.get("format", "") or "").lower() if isinstance(info, dict) else ""
         if fmt == "parquet" or file_name.endswith(".parquet"):
-            return pl.read_parquet(file_name, n_rows=0).columns  # type: ignore[return-value]
+            return pl.read_parquet(file_name, n_rows=0).columns
         if fmt == "csv" or file_name.endswith(".csv"):
-            return pl.read_csv(file_name, n_rows=0).columns  # type: ignore[return-value]
+            return pl.read_csv(file_name, n_rows=0).columns
     except Exception:
         pass
     return []
@@ -123,8 +209,7 @@ def build_messages(question: str, tables: dict) -> list:
     schema_str = "\n".join(schema_lines)
     system = SYSTEM_PROMPT + f"\nTables (use these exact variable names):\n{schema_str}"
 
-
     messages = [{"role": "system", "content": system}]
-    # messages.extend(few_shots)
+    messages.extend(FEW_SHOTS)
     messages.append({"role": "user", "content": f"Tables: {table_names}\nQuestion: {question}"})
     return messages
