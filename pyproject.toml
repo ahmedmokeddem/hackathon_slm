@@ -8,6 +8,7 @@ dependencies = [
     "accelerate>=1.13.0",
     "dotenv>=0.9.9",
     "fastapi>=0.135.1",
+    "peft>=0.19.1",
     "polars>=1.40.0",
     "torch>=2.8.0",
     "transformers>=5.3.0",

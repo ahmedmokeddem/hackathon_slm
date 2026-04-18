@@ -12,6 +12,7 @@ STRICT RULES:
 - NEVER use pl.count() — always pl.len()
 - NEVER use .loc, .iloc, or index-based selection
 - NEVER assign columns like df["col"] = ... — use .with_columns()
+- Use the EXACT alias names mentioned in the question — do NOT invent aliases from column names
 
 POLARS API (use exactly as shown):
 # Filter & Select
@@ -122,6 +123,8 @@ def build_messages(question: str, tables: dict) -> list:
     schema_str = "\n".join(schema_lines)
     system = SYSTEM_PROMPT + f"\nTables (use these exact variable names):\n{schema_str}"
 
+
     messages = [{"role": "system", "content": system}]
+    # messages.extend(few_shots)
     messages.append({"role": "user", "content": f"Tables: {table_names}\nQuestion: {question}"})
     return messages
