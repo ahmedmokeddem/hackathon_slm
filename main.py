@@ -2,12 +2,10 @@ import json
 
 import torch
 from fastapi import FastAPI
-from peft import PeftModel
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 MODEL_NAME = "Qwen/Qwen2.5-Coder-7B-Instruct"
-ADAPTER    = "Sokheng/qwen2.5-coder-7b-polars"
 MAX_NEW_TOKENS = 256
 
 app = FastAPI()
@@ -19,13 +17,11 @@ quant_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.float16,
 )
 
-base = AutoModelForCausalLM.from_pretrained(
+model = AutoModelForCausalLM.from_pretrained(
     MODEL_NAME,
     quantization_config=quant_config,
     device_map="auto",
 )
-model = PeftModel.from_pretrained(base, ADAPTER)
-model = model.merge_and_unload()
 model.eval()
 
 
